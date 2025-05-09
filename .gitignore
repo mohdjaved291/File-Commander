@@ -1,8 +1,0 @@
-# Ignore Python bytecode caches
-__pycache__/
-*.py[cod]
-
-# Ignore virtual environment
-venv/
-
-.env
