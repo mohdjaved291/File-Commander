@@ -37,7 +37,10 @@ DOCUMENTS_DIR = os.path.join(HOME_DIR, "Documents")
 PICTURES_DIR = os.path.join(HOME_DIR, "Pictures")
 MUSIC_DIR = os.path.join(HOME_DIR, "Music")
 VIDEOS_DIR = os.path.join(HOME_DIR, "Videos")
-MOVIES_DIR = os.path.join("D:", "Movies") if os.name == 'nt' else os.path.join(HOME_DIR, "Movies")
+if os.name == 'nt':
+    MOVIES_DIR = "D:\\Movies" 
+else:
+    MOVIES_DIR = os.path.join(HOME_DIR, "Movies")
 
 # Create a mapping of common locations
 COMMON_LOCATIONS = {
@@ -60,7 +63,7 @@ COMMON_LOCATIONS = {
 
 # Add drive letters if on Windows
 if os.name == 'nt':
-    for drive_letter in "CDEFGHIJKLMNOPQRSTUVWXYZ":
+    for drive_letter in "DEFGHIJKLMNOPQRSTUVWXYZ":  # Note: C removed
         drive_path = f"{drive_letter}:\\"
         if os.path.exists(drive_path):
             COMMON_LOCATIONS[f"drive_{drive_letter.lower()}"] = drive_path
@@ -78,6 +81,8 @@ class FileOperations:
             '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', 
             '.m4v', '.mpg', '.mpeg', '.3gp', '.3g2', '.m2ts'
         ]
+        # Initialize common_paths to use the global COMMON_LOCATIONS
+        self.common_paths = COMMON_LOCATIONS
     
     def resolve_path(self, path: str) -> str:
         """Resolve a path string to an absolute path."""
@@ -88,11 +93,11 @@ class FileOperations:
         
         # Quick return for absolute paths
         if os.path.isabs(path):
-            return path
+            return os.path.normpath(path)
         
         # Check common paths
-        if path.lower() in COMMON_LOCATIONS:
-            return COMMON_LOCATIONS[path.lower()]
+        if path.lower() in self.common_paths:
+            return os.path.normpath(self.common_paths[path.lower()])
         
         # Special handling for drive references (Windows)
         drive_match = re.match(r"^(?:drive\s+)?([a-zA-Z])[:\s]?$", path)
@@ -104,9 +109,39 @@ class FileOperations:
         
         # Check if it has a drive letter (Windows)
         if len(path) > 1 and path[0].isalpha() and path[1] == ':':
+            # Ensure proper path format for Windows drives
+            if len(path) == 2:
+                return f"{path}\\"
+            elif path[2] != '\\' and path[2] != '/':
+                return f"{path[0:2]}\\{path[2:]}"
             return path
         
-        # Normalize the path
+        # NEW: Smart folder search across all drives
+        if os.name == 'nt':
+            # Get all available drives
+            for drive_letter in "DEFGHIJKLMNOPQRSTUVWXYZ":  # Skip C: drive
+                drive_path = f"{drive_letter}:\\"
+                if not os.path.exists(drive_path):
+                    continue
+                
+                # Check if the folder exists directly in the drive root
+                potential_path = os.path.join(drive_path, path)
+                if os.path.exists(potential_path) and os.path.isdir(potential_path):
+                    return os.path.normpath(potential_path)
+                
+                # Optional: Search one level deep for folders (can be resource-intensive)
+                try:
+                    for item in os.listdir(drive_path):
+                        item_path = os.path.join(drive_path, item)
+                        if os.path.isdir(item_path):
+                            # Check folder name against our target
+                            if item.lower() == path.lower():
+                                return os.path.normpath(item_path)
+                except (PermissionError, OSError):
+                    # Skip drives with permission issues
+                    continue
+        
+        # Otherwise, assume it's relative to current path
         return os.path.normpath(os.path.join(self.current_path, path))
     
     def create_folder(self, folder_name: str, location: str = "") -> str:
